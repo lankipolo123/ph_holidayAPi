@@ -1,9 +1,11 @@
 {
   "version": 2,
-  "builds": [
-    { "src": "api/index.py", "use": "@vercel/python" }
-  ],
+  "functions": {
+    "api/holidays.py": {
+      "runtime": "python3.9"
+    }
+  },
   "routes": [
-    { "src": "/(.*)", "dest": "/api/index.py" }
+    { "src": "/holidays", "dest": "api/holidays.py" }
   ]
-} 
+}

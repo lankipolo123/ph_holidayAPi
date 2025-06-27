@@ -1,9 +1,12 @@
+from flask import Flask, jsonify, request
 import requests
 from bs4 import BeautifulSoup
 import time
 import socket
 from datetime import datetime
 import random
+
+app = Flask(__name__)
 
 # Simplified user-agent list (since user_agent_generator won't work on Vercel)
 user_agents = [
@@ -13,21 +16,13 @@ user_agents = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2 like Mac OS X)"
 ]
 
-def handler(request, response):
-    if request.method == "OPTIONS":
-        return response.json({}, status=200, headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type"
-        })
-
-    # Get ?year= from query, fallback to current year
-    year = request.query.get("year") or datetime.now().year
-    try:
-        year = int(year)
-    except ValueError:
-        year = datetime.now().year
-
+@app.route('/', methods=['GET'])
+@app.route('/holidays', methods=['GET'])
+@app.route('/holidays/<int:year>', methods=['GET'])
+def get_holidays(year=None):
+    # Get year from query param or path or default to current year
+    if year is None:
+        year = request.args.get('year', default=datetime.now().year, type=int)
     start_time = time.time()
     url = f'https://www.officialgazette.gov.ph/nationwide-holidays/{year}/'
     domain = url.split("//")[-1].split("/")[0]
@@ -35,7 +30,7 @@ def handler(request, response):
     try:
         ip_address = socket.gethostbyname(domain)
     except socket.gaierror:
-        return response.json({'error': 'Failed to resolve domain name'}, status=500, headers=cors_headers())
+        return jsonify({'error': 'Failed to resolve domain name'}), 500
 
     headers = {
         'User-Agent': random.choice(user_agents)
@@ -45,7 +40,7 @@ def handler(request, response):
         res = requests.get(url, headers=headers, timeout=10)
         res.raise_for_status()
     except requests.RequestException as e:
-        return response.json({'error': f'Failed to fetch: {str(e)}'}, status=500, headers=cors_headers())
+        return jsonify({'error': f'Failed to fetch: {str(e)}'}), 500
 
     try:
         soup = BeautifulSoup(res.content, 'html.parser')
@@ -62,16 +57,16 @@ def handler(request, response):
                     date = cols[1].get_text(strip=True)
                     holidays.append({'event': event, 'date': date, 'type': holiday_type})
     except Exception as e:
-        return response.json({'error': f'HTML parse error: {e}'}, status=500, headers=cors_headers())
+        return jsonify({'error': f'HTML parse error: {e}'}), 500
 
-    return response.json({
+    return jsonify({
         'request_timestamp': time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(start_time)),
         'response_duration_seconds': round(time.time() - start_time, 2),
         'source_url': url,
         'source_ip': ip_address,
         'number_of_holidays': len(holidays),
         'holidays': holidays
-    }, headers=cors_headers())
+    })
 
 # CORS headers
 def cors_headers():
@@ -80,3 +75,5 @@ def cors_headers():
         "Access-Control-Allow-Methods": "GET, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type"
     }
+
+# Do not call app.run() here; Vercel will handle running the app
